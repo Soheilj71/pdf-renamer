@@ -12,12 +12,15 @@ import csv
 import json
 import logging
 import os
+import platform
 import re
 import subprocess
 import warnings
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from pathlib import Path
+
+_PLATFORM = platform.system()  # 'Darwin', 'Linux', or 'Windows'
 
 _CONFIG_PATH = Path.home() / '.pdf_renamer_config.json'
 
@@ -46,12 +49,25 @@ except ImportError:
 
 def _is_dark_mode() -> bool:
     try:
-        result = subprocess.run(
-            ['defaults', 'read', '-g', 'AppleInterfaceStyle'],
-            capture_output=True, text=True, timeout=2)
-        return result.stdout.strip().lower() == 'dark'
+        if _PLATFORM == 'Darwin':
+            result = subprocess.run(
+                ['defaults', 'read', '-g', 'AppleInterfaceStyle'],
+                capture_output=True, text=True, timeout=2)
+            return result.stdout.strip().lower() == 'dark'
+        if _PLATFORM == 'Windows':
+            import winreg  # type: ignore[import-not-found]
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,  # type: ignore[attr-defined]
+                                 r'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize')
+            value, _ = winreg.QueryValueEx(key, 'AppsUseLightTheme')  # type: ignore[attr-defined]
+            return value == 0
+        if _PLATFORM == 'Linux':
+            result = subprocess.run(
+                ['gsettings', 'get', 'org.gnome.desktop.interface', 'color-scheme'],
+                capture_output=True, text=True, timeout=2)
+            return 'dark' in result.stdout.lower()
     except Exception:
-        return False
+        pass
+    return False
 
 
 _LIGHT = {
@@ -66,6 +82,16 @@ _DARK = {
     'entry_border': '#555555', 'filter_bg': '#3a3a3c',
     'bottom_fg': '#ffffff',
 }
+
+# Pick system fonts that exist on each platform
+_FONT_UI:    str = 'DejaVu Sans'
+_FONT_TITLE: str = 'DejaVu Sans'
+if _PLATFORM == 'Darwin':
+    _FONT_UI    = 'SF Pro Text'
+    _FONT_TITLE = 'SF Pro Display'
+elif _PLATFORM == 'Windows':
+    _FONT_UI    = 'Segoe UI'
+    _FONT_TITLE = 'Segoe UI'
 
 import pypdf
 import pdfplumber
@@ -248,17 +274,17 @@ class App(_BaseClass):  # type: ignore[misc, valid-type]
         style.configure('Treeview',
                         background=t['tree_bg'], foreground=t['tree_fg'],
                         fieldbackground=t['tree_bg'],
-                        font=('SF Pro Text', 12), rowheight=36)
+                        font=(_FONT_UI, 12), rowheight=36)
         style.configure('Treeview.Heading',
                         background=t['heading_bg'], foreground=t['fg'],
-                        font=('SF Pro Text', 12, 'bold'))
+                        font=(_FONT_UI, 12, 'bold'))
         style.map('Treeview', background=[('selected', '#0051d4')],
                   foreground=[('selected', 'white')])
 
         top = tk.Frame(self, bg=t['bg'])
         top.pack(fill='x', padx=12, pady=6)
 
-        tk.Label(top, text='PDF Renamer', font=('SF Pro Display', 18, 'bold'),
+        tk.Label(top, text='PDF Renamer', font=(_FONT_TITLE, 18, 'bold'),
                  bg=t['bg'], fg=t['fg']).pack(side='left')
 
         tk.Checkbutton(top, text='Dark Mode',
@@ -267,7 +293,7 @@ class App(_BaseClass):  # type: ignore[misc, valid-type]
                        bg=t['bg'], fg=t['fg_dim'],
                        activebackground=t['bg'], activeforeground=t['fg'],
                        selectcolor=t['tree_bg'],
-                       font=('SF Pro Text', 11),
+                       font=(_FONT_UI, 11),
                        cursor='arrow').pack(side='left', padx=(16, 0))
 
         btn_frame = tk.Frame(top, bg=t['bg'])
@@ -278,7 +304,7 @@ class App(_BaseClass):  # type: ignore[misc, valid-type]
                                    bg='#007aff', fg='black',
                                    activebackground='#0051d4', activeforeground='black',
                                    highlightbackground='#007aff', highlightthickness=2,
-                                   font=('SF Pro Text', 12),
+                                   font=(_FONT_UI, 12),
                                    relief='flat', padx=12, pady=6, cursor='arrow')
         self._scan_btn.pack(side='left', padx=4)
 
@@ -287,7 +313,7 @@ class App(_BaseClass):  # type: ignore[misc, valid-type]
                        bg=t['bg'], fg=t['fg'],
                        activebackground=t['bg'], activeforeground=t['fg'],
                        selectcolor=t['tree_bg'],
-                       font=('SF Pro Text', 11),
+                       font=(_FONT_UI, 11),
                        cursor='arrow').pack(side='left', padx=(8, 4))
 
         self._rename_btn = tk.Button(btn_frame, text='Rename Selected',
@@ -296,7 +322,7 @@ class App(_BaseClass):  # type: ignore[misc, valid-type]
                                      activebackground='#0051d4', activeforeground='black',
                                      disabledforeground='black',
                                      highlightbackground='#007aff', highlightthickness=2,
-                                     font=('SF Pro Text', 12),
+                                     font=(_FONT_UI, 12),
                                      relief='flat', padx=12, pady=6,
                                      cursor='arrow', state='disabled')
         self._rename_btn.pack(side='left', padx=4)
@@ -307,7 +333,7 @@ class App(_BaseClass):  # type: ignore[misc, valid-type]
                                      activebackground='#0051d4', activeforeground='black',
                                      disabledforeground='black',
                                      highlightbackground='#007aff', highlightthickness=2,
-                                     font=('SF Pro Text', 12),
+                                     font=(_FONT_UI, 12),
                                      relief='flat', padx=12, pady=6,
                                      cursor='arrow', state='disabled')
         self._toggle_btn.pack(side='left', padx=4)
@@ -317,7 +343,7 @@ class App(_BaseClass):  # type: ignore[misc, valid-type]
                                    bg='#ff9500', fg='black',
                                    activebackground='#cc7700', activeforeground='black',
                                    highlightbackground='#ff9500', highlightthickness=2,
-                                   font=('SF Pro Text', 12),
+                                   font=(_FONT_UI, 12),
                                    relief='flat', padx=12, pady=6,
                                    cursor='arrow', state='disabled')
         self._undo_btn.pack(side='left', padx=4)
@@ -328,22 +354,22 @@ class App(_BaseClass):  # type: ignore[misc, valid-type]
                                   activebackground='#248a3d', activeforeground='black',
                                   disabledforeground='black',
                                   highlightbackground='#34c759', highlightthickness=2,
-                                  font=('SF Pro Text', 12),
+                                  font=(_FONT_UI, 12),
                                   relief='flat', padx=12, pady=6,
                                   cursor='arrow', state='disabled')
         self._csv_btn.pack(side='left', padx=4)
 
         self._folder_lbl = tk.Label(self, textvariable=self._folder,
-                                    font=('SF Pro Text', 11), fg=t['fg_dim'],
+                                    font=(_FONT_UI, 11), fg=t['fg_dim'],
                                     bg=t['bg'], anchor='w')
         self._folder_lbl.pack(fill='x', padx=12)
 
         filter_frame = tk.Frame(self, bg=t['bg'])
         filter_frame.pack(fill='x', padx=12, pady=(4, 2))
-        tk.Label(filter_frame, text='Filter:', font=('SF Pro Text', 11),
+        tk.Label(filter_frame, text='Search:', font=(_FONT_UI, 11),
                  bg=t['bg'], fg=t['fg_dim']).pack(side='left')
         filter_entry = tk.Entry(filter_frame, textvariable=self._filter_var,
-                                font=('SF Pro Text', 11), relief='flat',
+                                font=(_FONT_UI, 11), relief='flat',
                                 bg=t['filter_bg'], fg=t['fg'],
                                 insertbackground=t['fg'],
                                 highlightthickness=1, highlightbackground=t['entry_border'],
@@ -382,7 +408,7 @@ class App(_BaseClass):  # type: ignore[misc, valid-type]
         self._progress = ttk.Progressbar(self, orient='horizontal', mode='determinate')
 
         self._status = tk.StringVar(value='Choose a folder to get started.')
-        tk.Label(self, textvariable=self._status, font=('SF Pro Text', 13),
+        tk.Label(self, textvariable=self._status, font=(_FONT_UI, 13),
                  fg=t['bottom_fg'], bg=t['bg'], anchor='w').pack(
             fill='x', padx=12, pady=(0, 2))
 
@@ -394,7 +420,7 @@ class App(_BaseClass):  # type: ignore[misc, valid-type]
             'Tip: if the app is not responding to clicks, try moving the window slightly — that usually fixes it.\n'
             'Designed by Soheil Jamali & AI'
         )
-        tk.Label(self, text=legend, font=('SF Pro Text', 12),
+        tk.Label(self, text=legend, font=(_FONT_UI, 12),
                  fg=t['bottom_fg'], bg=t['bg'], anchor='w', wraplength=1200,
                  justify='left').pack(fill='x', padx=12, pady=(0, 8))
 
@@ -483,7 +509,12 @@ class App(_BaseClass):  # type: ignore[misc, valid-type]
         if idx >= len(self._results):
             return
         path = self._results[idx]['old_path']
-        subprocess.Popen(['open', str(path)])
+        if _PLATFORM == 'Darwin':
+            subprocess.Popen(['open', str(path)])
+        elif _PLATFORM == 'Windows':
+            os.startfile(str(path))  # type: ignore[attr-defined]
+        else:
+            subprocess.Popen(['xdg-open', str(path)])
 
     def _on_row_double_click(self, event: tk.Event):
         self._close_editor(save=False)
@@ -501,7 +532,7 @@ class App(_BaseClass):  # type: ignore[misc, valid-type]
         current_val = self._tree.item(row_id, 'values')[1]
 
         self._entry_idx = idx
-        self._entry = tk.Entry(self._tree, font=('SF Pro Text', 12),
+        self._entry = tk.Entry(self._tree, font=(_FONT_UI, 12),
                                relief='flat', bd=0,
                                highlightthickness=2,
                                highlightbackground='#007aff',
@@ -776,18 +807,17 @@ class App(_BaseClass):  # type: ignore[misc, valid-type]
 
 if __name__ == '__main__':
     app = App()
-    # Force the window to render fully before activating
     app.update_idletasks()
     app.update()
-    # Tell macOS to bring this process to the front (synchronous)
-    try:
-        subprocess.run(
-            ['osascript', '-e',
-             f'tell application "System Events" to set frontmost of '
-             f'(first process whose unix id is {os.getpid()}) to true'],
-            timeout=2
-        )
-    except Exception:
-        pass
+    if _PLATFORM == 'Darwin':
+        try:
+            subprocess.run(
+                ['osascript', '-e',
+                 f'tell application "System Events" to set frontmost of '
+                 f'(first process whose unix id is {os.getpid()}) to true'],
+                timeout=2
+            )
+        except Exception:
+            pass
     app.activate()
     app.mainloop()
